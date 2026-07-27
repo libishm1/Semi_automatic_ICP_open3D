@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+
+# registration outputs
+# (the repo's committed aligned_source.ply stays tracked; git ignores only
+#  untracked files, so the example output is unaffected)
+results*/
+r[0-9]/
+deviation_heatmap.ply
+transform.txt
+report.json
+
+# meshes unpacked from the committed archives
+Metashape-mesh.obj
+Fused_*.stl
