@@ -1,6 +1,6 @@
 # Semi-automatic ICP with Open3D
 
-Coarse-to-fine registration of two 3D surfaces, for comparing reconstructions of the same subject produced by different pipelines — photogrammetry (Metashape vs. COLMAP), intraoral/desktop scanners, or repeat scans of the same object.
+Coarse-to-fine registration of two 3D surfaces, for comparing reconstructions of the same subject produced by different pipelines — photogrammetry (Metashape vs. COLMAP), optical/desktop scanners, or repeat scans of the same object.
 
 <img width="400" height="400" alt="Registration result" src="https://github.com/user-attachments/assets/a9ed7404-73ea-4e37-99d1-5cb656d07a21" />
 
@@ -18,22 +18,82 @@ Every length parameter is a **fraction of the bounding-box diagonal**, so the sa
 | [Open3D](http://www.open3d.org/) | ≥ 0.17 | Verified on 0.19.0 |
 | [NumPy](https://numpy.org/) | ≥ 1.21 | Verified on 2.4.6 |
 
-```bash
-# If your default python is 3.13, pick 3.11 or 3.12 explicitly:
-py -3.11 -m venv .venv          # Windows
-python3.11 -m venv .venv        # macOS / Linux
+A desktop session with OpenGL is needed for the viewer and for `--manual`. Everything else runs headless with `--no-vis`.
 
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # macOS / Linux
+---
 
+## Setting up the virtual environment
+
+A venv keeps Open3D isolated from your system Python. This matters here: Open3D publishes no wheel for Python 3.13, so if that is your default `python` the install fails with a confusing `No matching distribution found for open3d`. Check first:
+
+```bat
+py --list
+```
+
+Pick 3.11 or 3.12 from that list.
+
+### Create it (once)
+
+```bat
+cd /d C:\path\to\Semi_automatic_ICP_open3D
+py -3.11 -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-A desktop session with OpenGL is needed for the viewer and for `--manual`. Everything else runs headless with `--no-vis`.
+On macOS / Linux:
+
+```bash
+cd /path/to/Semi_automatic_ICP_open3D
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Activate it (every new terminal)
+
+| Shell | Command |
+|---|---|
+| Command Prompt | `.venv\Scripts\activate.bat` |
+| PowerShell | `.venv\Scripts\Activate.ps1` |
+| Git Bash | `source .venv/Scripts/activate` |
+| macOS / Linux | `source .venv/bin/activate` |
+
+Your prompt gains a `(.venv)` prefix. **Verify you are on the right interpreter** — this is the check that catches the 3.13 trap:
+
+```bat
+python -c "import sys, open3d; print(sys.version); print(open3d.__version__)"
+```
+
+Expect `3.11.x` and `0.19.0`. If it prints 3.13, activation did not take.
+
+Then run normally, and `deactivate` when finished:
+
+```bat
+python Semi-automatic_ICP.py Fused_20260721113854.stl Fused_20260721112631.stl --out-dir results
+```
+
+### Without activating
+
+Activation only edits `PATH`. Calling the interpreter by full path works from any directory and is immune to activation problems or the wrong `python` winning on `PATH` — useful in scheduled tasks and `.bat` files:
+
+```bat
+C:\path\to\Semi_automatic_ICP_open3D\.venv\Scripts\python.exe Semi-automatic_ICP.py a.stl b.stl --no-vis
+```
+
+If PowerShell refuses with *"running scripts is disabled on this system"*, allow local scripts for your user only (no admin needed):
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+`.venv/` is gitignored, so it exists only on the machine that created it — repeat the create step on each new machine.
 
 ### Hardware
 
-**An 8 GB laptop is comfortable.** Measured peak working set on the 20 MB / 1.3M-vertex intraoral scan pair: **663 MB**, of which 101 MB is just importing NumPy and Open3D. With threads capped to 4 (a typical 11th-gen i5 laptop) the scans took 2.3 s and the photogrammetry meshes 8.4 s.
+**An 8 GB laptop is comfortable.** Measured peak working set on the 20 MB / 1.3M-vertex scan pair: **663 MB**, of which 101 MB is just importing NumPy and Open3D. With threads capped to 4 (a typical 11th-gen i5 laptop) the scans took 2.3 s and the photogrammetry meshes 8.4 s.
 
 | Stage | Resident | Peak |
 |---|---|---|
@@ -124,16 +184,17 @@ Rule of thumb: **if both inputs came off calibrated hardware, lock the scale.** 
 
 ## Worked example
 
-Two fused intraoral scans (`iTAD-scans.zip`), ~435k and ~406k triangles, roughly 180 mm across, starting 120 mm and 17° apart.
+Two scans of a rectangular block specimen (`iTAD-scans.zip`), ~435k and ~406k triangles, roughly 180 mm across, starting 120 mm and 17° apart.
+
+```bat
+python Semi-automatic_ICP.py Fused_20260721113854.stl Fused_20260721112631.stl --out-dir results
+```
 
 ```
-python Semi-automatic_ICP.py Fused_20260721113854.stl Fused_20260721112631.stl --no-vis --out-dir results
-```
-
-```
-200,000 / 200,000 points; diagonals 182.5027 / 178.7141 (ratio 1.0212)
-NOTE: diagonals differ by +2.1%; scale locked (rigid).
-working diagonal 178.7141 -> base voxel 2.6807
+Open3D 0.19.0
+200,000 / 200,000 points; diagonals 182.4394 / 178.7454 (ratio 1.0207)
+NOTE: diagonals differ by +2.1%; scale locked (rigid). Use --allow-scale only if the inputs are in different units.
+working diagonal 178.7454 -> base voxel 2.6812
 RANSAC: fitness 1.0000, rmse 1.10427
   ICP 1  voxel   10.7247  pts     227  fitness 1.0000  rmse 4.32454
   ICP 2  voxel    5.3624  pts     897  fitness 1.0000  rmse 1.84883
@@ -142,12 +203,37 @@ RANSAC: fitness 1.0000, rmse 1.10427
 
 SURFACE DEVIATION (aligned source -> nearest target point)
     mean :    0.19828   ( 0.111 % of diagonal)
-  median :    0.18651   ( 0.104 % of diagonal)
+  median :    0.18625   ( 0.104 % of diagonal)
      rms :    0.22165   ( 0.124 % of diagonal)
-     p95 :    0.36416   ( 0.204 % of diagonal)
-     max :    2.67361   ( 1.496 % of diagonal)
+     p95 :    0.36347   ( 0.203 % of diagonal)
+     p99 :    0.44208   ( 0.247 % of diagonal)
+     max :    2.68697   ( 1.503 % of diagonal)
   within 0.001xdiag 46.7%, 0.002xdiag 94.4%, 0.005xdiag 99.9%
+
+Transform (original source -> original target coords):
+[[  0.981345   0.122307   0.148336 -29.322629]
+ [ -0.085186   0.968297  -0.234827 -60.098124]
+ [ -0.172354   0.21781    0.960652 -99.941284]
+ [  0.         0.         0.         1.      ]]
 ```
+
+### What the viewer shows
+
+Two windows open in sequence (omit `--no-vis`). Close each to continue.
+
+**1 — Alignment overlay.** Red is the aligned source, green the target.
+
+![Alignment overlay: red source and green target interleaved](docs/alignment_overlay.png)
+
+Read this by looking for **speckle, not blocks of colour**. Fine red/green salt-and-pepper across the whole surface means the two clouds are interpenetrating at the level of individual points — the fit is good. A solid red region beside a solid green one would mean one surface is sitting *beside* the other rather than *on* it. Note the green fringe along the top-right edge: that edge is where the two scans genuinely disagree, and it is the same region that lights up in the heat map.
+
+**2 — Deviation heat map.** Blue is 0, red is ≥ 0.5 % of the diagonal (0.89 mm here).
+
+![Deviation heat map: mostly blue with green edges](docs/deviation_heatmap.png)
+
+Almost uniformly blue, with green only along the edges. That matches the statistics — 94 % of points within 0.36 mm — and localises the disagreement to the specimen's edges, where grazing-angle scanner noise and trimming differences are expected. The `max` of 2.69 mm against a `p99` of 0.44 mm is that edge, not a global misalignment.
+
+Both figures are also written to `results/` as `.ply` files you can open in MeshLab or CloudCompare.
 
 Total runtime **2.6 s**. Independent verification, recomputed from the original coordinates:
 
@@ -185,12 +271,13 @@ Watch for **high fitness with high RMSE**: correspondences were found, but the s
 | Crash on a headless machine | Viewer needs OpenGL | Add `--no-vis` |
 | `MemoryError` / heavy paging while loading | Mesh too large for available RAM | Decimate first — lowering `--points` will not help, the spike is in the reader |
 | Viewer sluggish on integrated graphics | Too many points rendered | `--points 50000`; affects display only, not the transform |
+| `GLFW Error: WGL: Failed to make context current` after the first window closes | Open3D reusing an OpenGL context for the second viewer | Harmless — it appears as the heat-map window opens and both windows still render. Results are already written to `--out-dir` by this point. Use `--no-vis` to avoid it entirely |
 
 ---
 
 ## History
 
-This started as a fixed-path script with metre-scale constants. Run on millimetre-scale intraoral scans it produced **fitness 0.0000 after 7 min 16 s**; the same data now completes in 2.6 s. What was wrong, all measured:
+This started as a fixed-path script with metre-scale constants. Run on the millimetre-scale scan pair it produced **fitness 0.0000 after 7 min 16 s**; the same data now completes in 2.6 s. What was wrong, all measured:
 
 1. **Metre-scale constants.** `voxel_size = 0.03` against a 180 mm model. `voxel_down_sample(0.03)` reduced 150,000 points to 149,467 — a 0.4 % reduction instead of the intended ~50×, so RANSAC ran on 149k points.
 2. **Degenerate FPFH features.** A feature radius of 0.15 mm against ~0.48 mm point spacing left **82,216 of 149,467 descriptors (55 %) all-zero**, so RANSAC returned the identity matrix.
@@ -209,7 +296,8 @@ This started as a fixed-path script with metre-scale constants. Run on millimetr
 .
 ├── Semi-automatic_ICP.py     # The whole tool (~200 lines)
 ├── requirements.txt
-├── iTAD-scans.zip            # Two intraoral scans, millimetres (rigid example)
+├── iTAD-scans.zip            # Two scans of a block specimen, mm (rigid example)
+├── docs/                     # README figures
 ├── Metashape-mesh.zip        # Photogrammetry source (arbitrary units)
 ├── Colmap_poisson_mesh.obj   # Photogrammetry target
 └── aligned_source.ply        # Example output
